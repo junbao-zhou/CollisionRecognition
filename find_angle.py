@@ -1,61 +1,105 @@
-import matplotlib.pyplot as plt
-import numpy as np
-import glob
-import random
-import math
-import os
+import cv2
 
-path = './dataset/train'
 
-labels = os.listdir(path)
-label = 0
+class Direction(Enum):
+    No = 0
+    Up = 1
+    RightUp = 2
+    Right = 3
+    RightDown = 4
+    Down = 5
+    LeftDown = 6
+    Left = 7
+    LeftUp = 8
 
-folders = glob.glob(f'{path}/{labels[label]}/*/')
-folder = random.choice(folders)
-print(folder)
-mask_img_files = glob.glob(f'{folder}mask/*.png')
-mask_img_before = plt.imread(mask_img_files[0])
-# print(mask_img_before.shape)
-mask_img_after = plt.imread(mask_img_files[-1])
 
-cols = np.array([np.arange(mask_img_before.shape[0])])
-cols = cols.repeat(mask_img_before.shape[1], axis=0)
-rows = cols.T
+def findContourCenter(img):
+    contours, hierarchy = cv2.findContours(
+        np.uint8(img), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    contours.sort(key=cv2.contourArea, reverse=True)
+    M = cv2.moments(contours[0])
+    return [int(M['m01']/M['m00']), int(M['m10']/M['m00'])], contours[0]
 
-before_pos = np.array([np.sum(rows * mask_img_before),
-                       np.sum(cols * mask_img_before)]) / np.sum(mask_img_before)
 
-after_pos = np.array([np.sum(rows * mask_img_after),
-                      np.sum(cols * mask_img_after)]) / np.sum(mask_img_after)
+def findCollision(folder, is_debug):
 
-print(before_pos)
-print(after_pos)
+    # folder = './dataset/train/toothpaste_box/21/'
+    before = 0
+    after = 1
+    row = 0
+    col = 1
+    mask_img_files = glob.glob(f'{folder}mask/*.png')
+    mask_img = np.array([plt.imread(mask_img_files[0]),
+                         plt.imread(mask_img_files[-1])])
 
-angle = math.atan2((after_pos[0] - before_pos[0]),
-                   (after_pos[1] - before_pos[1]))
-angle = angle / math.pi * 180
+    cols = np.array([np.arange(mask_img.shape[1])])
+    cols = cols.repeat(mask_img.shape[2], axis=0)
+    rows = cols.T
 
-distance = math.sqrt((after_pos[0] - before_pos[0])
-                     ** 2 + (after_pos[1] - before_pos[1])**2)
+    pos = np.einsum('chw,thw->tchw', np.array([rows, cols]), mask_img)
+    # centers = np.einsum(
+    #     'chw,thw->tc', np.array([rows, cols]), mask_img) / np.einsum('thw->t', mask_img).reshape(2, 1)
 
-print(angle, distance)
+    after_min_row = np.min(
+        pos[after][row] + 1000 * (1 - mask_img[after]))
+    after_max_row = np.max(pos[after][row])
+    after_min_col = np.min(
+        pos[after][col] + 1000 * (1 - mask_img[after]))
+    after_max_col = np.max(pos[after][col])
 
-with open(f'{folder}position.npy', 'wb') as f:
-    np.save(f, before_pos)
-    np.save(f, after_pos)
-    np.save(f, angle)
-    np.save(f, distance)
+    center_before, cnt = findContourCenter(mask_img[before])
+    center_after, cnt = findContourCenter(mask_img[after])
 
-with open(f'{folder}position.npy', 'rb') as f:
-    print(np.load(f))
-    print(np.load(f))
-    print(np.load(f))
-    print(np.load(f))
+    # threshold = 30
 
-inter_img = np.array([mask_img_before, mask_img_after,
-                      np.zeros(mask_img_after.shape)])
-inter_img = np.moveaxis(inter_img, 0, -1)
-plt.imshow(inter_img)
-plt.plot([before_pos[1], after_pos[1]], [before_pos[0], after_pos[0]])
-plt.plot(after_pos[1], after_pos[0], marker='o')
-plt.show()
+    # if after_min_row < threshold:
+    #     if after_min_col < threshold:
+    #         direction = Direction.LeftUp
+    #     elif mask_img[before].shape[0] - after_max_col < threshold:
+    #         direction = Direction.RightUp
+    #     else:
+    #         direction = Direction.Up
+    # elif mask_img[after].shape[0] - after_max_row < threshold:
+    #     if after_min_col < threshold:
+    #         direction = Direction.LeftDown
+    #     elif mask_img[before].shape[0] - after_max_col < threshold:
+    #         direction = Direction.RightDown
+    #     else:
+    #         direction = Direction.Down
+    # else:
+    #     if after_min_col < threshold:
+    #         direction = Direction.Left
+    #     elif mask_img[before].shape[0] - after_max_col < threshold:
+    #         direction = Direction.Right
+    #     else:
+    #         direction = Direction.No
+
+    distance = math.sqrt((center_after[row] - center_before[row])
+                         ** 2 + (center_after[col] - center_before[col])**2)
+    angle = math.atan2((center_after[row] - 220),
+                       (center_after[col] - 220))
+
+    # if distance < 2:
+    #     direction = Direction.No
+    if is_debug:
+        print(folder)
+        # print(f'min_row = {after_min_row}')
+        # print(f'max_row = {after_max_row}')
+        # print(f'min_col = {after_min_col}')
+        # print(f'max_col = {after_max_col}')
+        print(angle, distance)
+        # print(direction)
+        inter_img = np.array([mask_img[before], mask_img[after],
+                              np.zeros(mask_img[after].shape)])
+        inter_img = np.moveaxis(inter_img, 0, -1)
+        inter_img = cv2.UMat(inter_img)
+        inter_img = cv2.UMat.get(inter_img)
+        cv2.drawContours(inter_img, [cnt], -1, (0, 0, 255), 2)
+        plt.imshow(inter_img)
+        plt.plot([center_before[1], center_after[1]],
+                 [center_before[0], center_after[0]])
+        plt.plot(center_after[1],
+                 center_after[0], marker='o')
+        plt.show()
+
+    return angle, distance

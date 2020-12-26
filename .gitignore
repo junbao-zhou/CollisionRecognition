@@ -2,4 +2,4 @@
 *pptx
 dataset
 .vscode
-ConvNet.model
+*.model
