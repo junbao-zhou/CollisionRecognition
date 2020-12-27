@@ -2,8 +2,11 @@ import numpy as np
 import scipy.signal as ss
 import matplotlib.pyplot as plt
 
+freq_length = 57
+time_length = 221
 
-def STFT(audio_file, is_plot, freq_length, time_length):
+
+def STFT(audio_file, is_plot):
     data = np.load(audio_file, allow_pickle=True)
     audio = data['audio']
     sample_rate = data['audio_samplerate']
@@ -24,9 +27,11 @@ def STFT(audio_file, is_plot, freq_length, time_length):
 
     if is_plot:
         print(audio_file)
-        print(f'audio shape = {audio.shape}')
-        plt.plot(audio[:, 3])
-        plt.show()
+        print(f'max = {np.max(audio)}')
+        print(f'sum = {np.sum(audio)}')
+        # print(f'audio shape = {audio.shape}')
+        # plt.plot(audio[:, 3])
+        # plt.show()
         print(f'audio_resample.shape = {audio_resample.shape}')
         plt.plot(audio_resample)
         plt.show()
